@@ -1,0 +1,218 @@
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+import javax.swing.*;
+import javax.swing.border.Border;
+
+public class View
+{
+   //---------------------------------------------------------------------------
+   //                          CardTable Class
+   //---------------------------------------------------------------------------
+   public static class CardTable extends JFrame
+   {
+      static int MAX_CARDS_PER_HAND = 56;
+      static int MAX_PLAYERS = 2;  // for now, we only allow 2 person games
+
+      private int numCardsPerHand;
+      private int numPlayers;
+
+      public JPanel pnlComputerHand, pnlHumanHand, pnlPlayArea, pnlDeckArea,
+      pnlCardToPlay, pnlStopWatch, pnlSuperPanel;
+
+      //The constructor filters input, adds any panels to the JFrame,
+      //and establishes layouts according to the general description below.
+      CardTable(String title, int numCardsPerHand, int numPlayers) {
+
+         setTitle(title);
+         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+         this.numCardsPerHand = numCardsPerHand;
+         this.numPlayers = numPlayers;
+
+         pnlComputerHand = new JPanel();
+         pnlHumanHand = new JPanel();
+         pnlPlayArea = new JPanel();
+         pnlDeckArea = new JPanel();
+         pnlCardToPlay = new JPanel();
+
+         //New panels for stopWatch
+         pnlStopWatch = new JPanel();
+         pnlSuperPanel = new JPanel();
+
+         //Set panel colors
+         Color greenFelt = new Color(71, 113, 72);
+         pnlComputerHand.setBackground(greenFelt);
+         pnlHumanHand.setBackground(greenFelt);
+         pnlPlayArea.setBackground(greenFelt);
+         pnlDeckArea.setBackground(greenFelt);
+         pnlCardToPlay.setBackground(greenFelt);
+         pnlStopWatch.setBackground(greenFelt);
+         pnlSuperPanel.setBackground(greenFelt);
+         pnlStopWatch.setBackground(Color.LIGHT_GRAY);
+
+         //Set size of deck and play area for balance
+         Dimension preferredSize = new Dimension(200,100);
+         pnlDeckArea.setPreferredSize(preferredSize);
+         pnlCardToPlay.setPreferredSize(preferredSize);
+
+         //Add borders
+         Border blackLine = BorderFactory.createLineBorder(Color.black);
+         pnlComputerHand.setBorder(BorderFactory.createTitledBorder(blackLine,
+               "Computer Hand"));
+         pnlHumanHand.setBorder(BorderFactory.createTitledBorder(blackLine,
+               "Human Hand"));
+         pnlPlayArea.setBorder(BorderFactory.createTitledBorder(blackLine,
+               "Play Area"));
+         pnlDeckArea.setBorder(BorderFactory.createTitledBorder(blackLine,
+               "Deck Area"));
+         pnlCardToPlay.setBorder(BorderFactory.createTitledBorder(blackLine,
+               "Card Played"));
+
+         pnlStopWatch.setBorder(BorderFactory.createTitledBorder(blackLine,
+               "StopWatch & Scores"));
+
+         //Add to frame
+         this.add(pnlComputerHand);
+         this.add(pnlHumanHand);
+         this.add(pnlPlayArea);
+         this.add(pnlDeckArea);
+         this.add(pnlCardToPlay);
+         this.add(pnlStopWatch);
+         this.add(pnlSuperPanel);
+
+      }
+
+      //Accessors
+      public int getNumCardsPerHand() {
+         return this.numCardsPerHand;
+      }
+      public int getNumPlayers() {
+         return this.numPlayers;
+      }
+   }// --- End CardTable Class ---
+
+
+   //---------------------------------------------------------------------------
+   //                          StopWatch Class
+   //---------------------------------------------------------------------------
+   public static class Stopwatch implements ActionListener {
+      JPanel stopWatchPanel = new JPanel(new BorderLayout());
+      JButton startButton = new JButton("Start");
+      JButton resetButton = new JButton("Reset");
+      JLabel elapsedTimeLabel = new JLabel();
+      boolean isStopwatchStarted = false;
+      final static int MS_PER_SECOND = 1000;
+      final static int MS_PER_HOUR = 3_600_000;
+      final static int MS_PER_MINUTE = 60_000;
+      int elapsedTime;
+      int hours = 0;
+      int minutes = 0;
+      int seconds = 0;
+      String hoursString = String.format("%02d", hours);
+      String minutesString = String.format("%02d", minutes);
+      String secondsString = String.format("%02d", seconds);
+
+      
+      Stopwatch() {
+         elapsedTimeLabel.setText(hoursString + ":" + minutesString + ":" + 
+      secondsString);
+         elapsedTimeLabel.setFont(new Font("Avenir", Font.BOLD, 20));
+         elapsedTimeLabel.setHorizontalAlignment(JLabel.CENTER);
+         elapsedTimeLabel.setVerticalAlignment(JLabel.CENTER);
+         stopWatchPanel.add(elapsedTimeLabel, BorderLayout.NORTH);
+
+         startButton.setFont(new Font("Avenir", Font.BOLD, 15));
+         startButton.addActionListener(this);
+         stopWatchPanel.add(startButton, BorderLayout.WEST);
+
+         resetButton.setFont(new Font("Avenir", Font.BOLD, 15));
+         resetButton.addActionListener(this);
+         stopWatchPanel.add(resetButton, BorderLayout.EAST);
+
+         stopWatchPanel.setBackground(Color.LIGHT_GRAY);
+         stopWatchPanel.setVisible(true);
+      }
+
+      public void actionPerformed(ActionEvent e) {
+         Packer packerThread = new Packer();
+         packerThread.start();
+
+         if (e.getSource() == startButton) {
+            if (isStopwatchStarted == false) {
+               isStopwatchStarted = true;
+               startButton.setText("Stop");
+               start();
+            } else {
+               isStopwatchStarted = false;
+               startButton.setText("Start");
+               stop();
+            }
+         }
+
+         if (e.getSource() == resetButton) {
+            isStopwatchStarted = false;
+            startButton.setText("Start");
+            reset();
+         }
+      }
+
+      private class Packer extends Thread
+      {
+         public void run() {
+            while(isStopwatchStarted == true)
+               doNothing(100);
+         }
+
+         public void doNothing(int milliseconds) {
+            try
+            {
+               Thread.sleep(milliseconds);
+            }
+            catch(InterruptedException e)
+            {
+               System.out.println("Unexpected interrupt");
+               System.exit(0);
+            }
+         }
+      }
+
+      void start() {
+         timer.start();
+      }
+
+      void stop() {
+         timer.stop();
+      }
+
+      void reset() {
+         timer.stop();
+         elapsedTime = 0;
+         hours = 0;
+         minutes = 0;
+         seconds = 0;
+         String hoursString = String.format("%02d", hours);
+         String minutesString = String.format("%02d", minutes);
+         String secondsString = String.format("%02d", seconds);
+         elapsedTimeLabel.setText(hoursString + ":" + minutesString + ":" + secondsString);
+      }
+
+      Timer timer  = new Timer(MS_PER_SECOND, new ActionListener() {
+         @Override
+         public void actionPerformed(ActionEvent e) {
+            elapsedTime += MS_PER_SECOND;
+            hours = elapsedTime / MS_PER_HOUR;
+            minutes = (elapsedTime / MS_PER_MINUTE) % 60;
+            seconds = (elapsedTime / MS_PER_SECOND) % 60;
+            hoursString = String.format("%02d", hours);
+            minutesString = String.format("%02d", minutes);
+            secondsString = String.format("%02d", seconds);
+            elapsedTimeLabel.setText(hoursString + ":" + minutesString + ":" + secondsString);
+         }
+      });
+   } // --- End Stopwatch Class ---
+}

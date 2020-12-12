@@ -1,0 +1,577 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.lang.String;
+import java.util.Timer;
+
+public class Controller
+{
+   public static int NUM_CARDS_PER_HAND = 7;
+   public static int NUM_PLAYERS = 2;
+   public static int NUM_STACKS = 3;
+   public static JLabel deckLabel = new JLabel();
+   public static JLabel deckTextLabel = new JLabel();
+   public static JLabel[] computerLabels = new JLabel[NUM_CARDS_PER_HAND];
+   public static JLabel[] humanLabels = new JLabel[NUM_CARDS_PER_HAND];
+   public static JButton[] humanButtons = new JButton[NUM_CARDS_PER_HAND];
+   public static JLabel[] stackLabels = new JLabel[NUM_STACKS];
+   public static JButton[] stackButtons = new JButton[NUM_STACKS];
+   public static JLabel playedCardLabel = new JLabel();
+   public static JLabel[] stackText = new JLabel[NUM_STACKS];
+   public static JButton cannotPlay = new JButton("I Cannot Play");
+   public static JButton computerPlayed = new JButton("Comp. Played:");
+   public static Model.Card cardPlayed;
+   public static int humanCannotPlayCount = 0;
+   public static int computerCannotPlayCount = 0;
+   public static int consecutiveCannotPlays = 0;
+   public static View.Stopwatch stopwatch;
+   public static boolean humanTurn = true;
+
+   //---------------------------------------------------------------------------
+   //                               Main
+   //---------------------------------------------------------------------------
+
+   public static void main(String[] args) {
+      int numPacksPerDeck = 1;
+      int numJokersPerPack = 2;
+      int numUnusedCardsPerPack = 0;
+      Model.Hand[] stacks = new Model.Hand[3];
+      Model.Card[] unusedCardsPerPack = null;
+      Model.CardGameFramework BuildGame = new Model.CardGameFramework(
+            numPacksPerDeck, numJokersPerPack,
+            numUnusedCardsPerPack, unusedCardsPerPack,
+            NUM_PLAYERS, NUM_CARDS_PER_HAND);
+
+      // Create window/frame for game
+      View.CardTable myCardTable
+      = new View.CardTable("CardTable", NUM_CARDS_PER_HAND, NUM_PLAYERS);
+      myCardTable.setSize(900, 650);
+      myCardTable.setLocationRelativeTo(null);
+      myCardTable.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+      // Initialize cannotPlay button
+      cannotPlay.addActionListener(new ActionListener() {
+         public void actionPerformed(ActionEvent e)
+         {
+            humanCannotPlay(BuildGame, myCardTable, stacks);
+         } // end actionPerformed()
+      }); // end actionListener()
+
+      // Set layout
+      FlowLayout layout = new FlowLayout(FlowLayout.CENTER);
+      myCardTable.pnlComputerHand.setLayout(layout);
+      myCardTable.pnlHumanHand.setLayout(layout);
+      myCardTable.pnlDeckArea.setLayout(layout);
+      myCardTable.pnlCardToPlay.setLayout(layout);
+
+      GridLayout mainGridLayout = new GridLayout(2, 3, 0, 0);
+      myCardTable.pnlPlayArea.setLayout(mainGridLayout);
+
+      //New panels for stopwatch
+      //myCardTable.pnlStopWatch.setLayout(layout);
+      myCardTable.pnlStopWatch.setLayout(new GridLayout(1,3));
+      myCardTable.pnlSuperPanel.setLayout(new BorderLayout());
+
+      // Create StopWatch and add it to the panel
+      stopwatch = new View.Stopwatch();
+
+      //Add scores to panel
+      updateScores(myCardTable);
+
+
+      myCardTable.add(myCardTable.pnlComputerHand, BorderLayout.NORTH);
+      myCardTable.add(myCardTable.pnlPlayArea, BorderLayout.CENTER);
+      myCardTable.add(myCardTable.pnlDeckArea, BorderLayout.WEST);
+      myCardTable.add(myCardTable.pnlCardToPlay, BorderLayout.EAST);
+
+      myCardTable.pnlSuperPanel.add(myCardTable.pnlHumanHand, BorderLayout.CENTER);
+      myCardTable.pnlSuperPanel.add(myCardTable.pnlStopWatch, BorderLayout.SOUTH);
+      myCardTable.add(myCardTable.pnlSuperPanel, BorderLayout.SOUTH);
+
+      // Deal cards
+      BuildGame.deal();
+
+      // Sort hands
+      for(int i = 0; i < NUM_PLAYERS; i++)
+         BuildGame.getHand(i).sort();
+
+      // Create hands for stacks and deal one card to each
+      for (int i = 0; i < NUM_STACKS; i++)
+      {
+         stacks[i] = new Model.Hand();
+         stacks[i].takeCard(BuildGame.getCardFromDeck());
+      }
+
+      // Load card label icons
+      Model.GUICard.loadCardIcons();
+      createCompLabels(BuildGame, myCardTable);
+      createHumanButtons(BuildGame, myCardTable, stacks);
+      createStackLabels(BuildGame, myCardTable, stacks);
+      createDeckLabel(BuildGame, myCardTable);
+      createPlayLabels(BuildGame, myCardTable);
+
+      // Display card table to user
+      myCardTable.setVisible(true);
+
+   } // end main()
+
+
+
+   //---------------------------------------------------------------------------
+   //                          Methods for Game
+   //---------------------------------------------------------------------------
+
+   //Method to update human and computer scores in the panel
+   static void updateScores(View.CardTable myCardTable) {
+      myCardTable.pnlStopWatch.removeAll();
+      JLabel humanScore = new JLabel("Human cannot plays: " + humanCannotPlayCount, JLabel.CENTER);
+      JLabel computerScore = new JLabel("Computer cannot plays: " + computerCannotPlayCount, JLabel.CENTER);
+      myCardTable.pnlStopWatch.add(humanScore);
+      myCardTable.pnlStopWatch.add(stopwatch.stopWatchPanel);
+      myCardTable.pnlStopWatch.add(computerScore);
+      myCardTable.pnlStopWatch.updateUI(); 
+   }
+
+   // Function for end of game
+   static void endGame()
+   {
+      String gameResults = "<html>The deck is empty, so the game is over.<br>";
+      gameResults += "Number of times you could not play: " + humanCannotPlayCount + "<br>";
+      gameResults += "Number of times computer could not play: " + computerCannotPlayCount;
+      JOptionPane.showMessageDialog(null, gameResults);
+   } // end function endGame()
+
+
+   // Function to check if consecutive cannot plays
+   static void checkConsecutiveCannotPlays(Model.CardGameFramework BuildGame, View.CardTable myCardTable, Model.Hand[] stacks)
+   {
+      if (consecutiveCannotPlays > 1)
+      {
+         JOptionPane.showMessageDialog(null, "Neither could play, 3 fresh cards on stacks.");
+         dealCardEachStack(BuildGame, myCardTable, stacks);
+      }
+   } // end function checkConsecutiveCannotPlays()
+
+
+   // Function to deal a card to each stack from the deck
+   static void dealCardEachStack(Model.CardGameFramework BuildGame, View.CardTable myCardTable, Model.Hand[] stacks)
+   {
+      for (int i = 0; i < NUM_STACKS; i++)
+      {
+         if (BuildGame.getNumCardsRemainingInDeck() < 1)
+         {
+            endGame();
+         }
+         else
+         {
+            stacks[i].takeCard(BuildGame.getCardFromDeck());
+         }
+      }
+      createStackLabels(BuildGame, myCardTable, stacks);
+      createDeckLabel(BuildGame, myCardTable);
+      consecutiveCannotPlays = 0;
+   } // end function dealCardEachStack()
+
+
+   // Function to handle when human cannot play
+   static void humanCannotPlay(Model.CardGameFramework BuildGame, View.CardTable myCardTable, Model.Hand[] stacks)
+   {
+      humanCannotPlayCount += 1;
+      updateScores(myCardTable);
+      consecutiveCannotPlays += 1;
+      humanTurn = false;
+      checkConsecutiveCannotPlays(BuildGame, myCardTable, stacks);
+      createHumanLabels(BuildGame, myCardTable);
+      createStackLabels(BuildGame, myCardTable, stacks);
+      cannotPlay.setEnabled(false);
+      computerPlays(BuildGame, myCardTable, stacks);
+   } // end function humanCannotPlay()
+
+
+   // Function to handle when computer cannot play
+   static void computerCannotPlay(Model.CardGameFramework BuildGame,  View.CardTable myCardTable, Model.Hand[] stacks)
+   {
+      if (humanTurn == false)
+      {
+         computerCannotPlayCount += 1;
+         updateScores(myCardTable);
+         consecutiveCannotPlays += 1;
+         humanTurn = true;
+         JOptionPane.showMessageDialog(null, "Computer cannot play.");
+         cardPlayed = null;
+         cannotPlay.setEnabled(true);
+         checkConsecutiveCannotPlays(BuildGame, myCardTable, stacks);
+      }
+      cardPlayed = null;
+      createHumanButtons(BuildGame, myCardTable, stacks );
+      createStackLabels(BuildGame, myCardTable, stacks);
+      createPlayLabels(BuildGame, myCardTable );
+      createDeckLabel(BuildGame, myCardTable);
+      //myCardTable.pnlCardToPlay.remove(computerPlayed); //Removes duplicate button
+   } // end function ComputerCannotPlay()
+
+
+   // Function that handles computer's turn to play
+   static void computerPlays(Model.CardGameFramework BuildGame, View.CardTable myCardTable, Model.Hand[] stacks)
+   {
+      if (humanTurn == false)
+      {
+         JOptionPane.showMessageDialog(null, "Computer's turn.");
+         boolean playableCardFound = false;
+         Model.Hand compHand = BuildGame.getHand(1);
+         int numCards = compHand.getNumCards();
+         int cardIndex = 0;
+         int stackIndex;
+         do
+         {
+            if (isCardPlayable(stacks, compHand.inspectCard(cardIndex)))
+            {
+               playableCardFound = true;
+            }
+            else
+            {
+               cardIndex++;
+            }
+         } while (!playableCardFound && cardIndex < numCards);
+         if (playableCardFound)
+         {
+            stackIndex = getPlayableStack(stacks, compHand.inspectCard(cardIndex));
+            highlightComputerPlayCard(compHand, cardIndex, myCardTable);
+            highlightComputerPlayStack(stacks, stackIndex, myCardTable);
+            stacks[stackIndex].takeCard(BuildGame.getHand(1).playCard(cardIndex));
+            consecutiveCannotPlays = 0;
+            if (BuildGame.getNumCardsRemainingInDeck() < 1)
+            {
+               endGame();
+            }
+            else
+            {
+               BuildGame.takeCard(1);
+               BuildGame.getHand(1).sort();
+               cardPlayed = null;
+               createCompLabels(BuildGame, myCardTable);
+               createStackLabels(BuildGame, myCardTable, stacks);
+               createPlayLabels(BuildGame, myCardTable );
+               createDeckLabel(BuildGame, myCardTable);
+               myCardTable.pnlCardToPlay.remove(cannotPlay); //Removes duplicate button
+               computerPlays(BuildGame, myCardTable, stacks);
+            }
+         }
+         else
+         {
+            computerCannotPlay(BuildGame, myCardTable, stacks);
+         }
+      }
+      else
+      {
+         cardPlayed = null;
+         createHumanButtons(BuildGame, myCardTable, stacks );
+         createStackLabels(BuildGame, myCardTable, stacks);
+         createPlayLabels(BuildGame, myCardTable );
+         createDeckLabel(BuildGame, myCardTable);
+         checkConsecutiveCannotPlays(BuildGame, myCardTable, stacks);
+         //myCardTable.pnlCardToPlay.remove(computerPlayed); //Removes duplicate button
+      }
+   } // end function computerPlays()
+
+
+   // Function to determine if card is playable on one of the stacks
+   static boolean isCardPlayable(Model.Hand[] stacks, Model.Card compCard)
+   {
+      int topCard;
+      int stackCardValue;
+      int compCardValue = Model.Card.cardValue(compCard);
+      for (int i = 0; i < NUM_STACKS; i++)
+      {
+         topCard = stacks[i].getNumCards() - 1;
+         stackCardValue = Model.Card.cardValue(stacks[i].inspectCard(topCard));
+         if (Math.abs(stackCardValue - compCardValue) == 1)
+         {
+            return true;
+         }
+      }
+      return false;
+   } // end function isCardPlayable()
+
+
+   // Function to get index of playable stack for card
+   static int getPlayableStack(Model.Hand[] stacks, Model.Card compCard)
+   {
+      int topCard;
+      int stackCardValue;
+      int compCardValue = Model.Card.cardValue(compCard);
+      for (int i = 0; i < NUM_STACKS; i++)
+      {
+         topCard = stacks[i].getNumCards() - 1;
+         stackCardValue = Model.Card.cardValue(stacks[i].inspectCard(topCard));
+         if (Math.abs(stackCardValue - compCardValue) == 1)
+         {
+            return i;
+         }
+      }
+      return -1; // error value, should never happen
+   } // end function getPlayableStack()
+
+
+   // Function to indicate to player which card computer is playing
+   static void highlightComputerPlayCard(Model.Hand compHand, int index, View.CardTable myCardTable)
+   {
+      cardPlayed = compHand.inspectCard(index);
+      myCardTable.pnlCardToPlay.remove(playedCardLabel);
+      myCardTable.pnlCardToPlay.remove(cannotPlay);
+      Icon playCard;
+      playCard = Model.GUICard.getIcon(cardPlayed);
+      playedCardLabel = new JLabel(playCard, JLabel.CENTER);
+      myCardTable.pnlComputerHand.remove(computerLabels[index]);
+      myCardTable.pnlCardToPlay.removeAll();
+      myCardTable.pnlCardToPlay.add(playedCardLabel);
+      myCardTable.pnlCardToPlay.add(computerPlayed);
+      myCardTable.pnlCardToPlay.updateUI();
+   } // end function highlightComputerPlayCard()
+
+
+   // Function to indicate to player which stack computer is playing card on
+   static void highlightComputerPlayStack(Model.Hand[] stacks, int stackIndex, View.CardTable myCardTable)
+   {
+
+      JOptionPane.showMessageDialog(null, "Computer played card on Stack " + (stackIndex + 1));
+   } // end function highlightComputerPlayStack()
+
+
+   // Function to create the labels in the play area
+   static void createPlayLabels(Model.CardGameFramework BuildGame, View.CardTable myCardTable)
+   {
+      myCardTable.pnlCardToPlay.removeAll();
+      Icon playCard;
+      GridLayout mainGridLayout = new GridLayout(2, 1, 0, 0);
+      myCardTable.pnlCardToPlay.setLayout(mainGridLayout);
+      if (cardPlayed == null)
+      {
+         playCard = Model.GUICard.getBlankCardIcon();
+      }
+      else
+      {
+         playCard = Model.GUICard.getIcon(cardPlayed);
+      }
+      playedCardLabel = new JLabel(playCard, JLabel.CENTER);
+
+      myCardTable.pnlCardToPlay.add(playedCardLabel);
+      if (humanTurn)
+      {
+         myCardTable.pnlCardToPlay.add(cannotPlay);
+      }
+      else
+      {
+         myCardTable.pnlCardToPlay.add(computerPlayed);
+      }
+      
+      myCardTable.pnlCardToPlay.updateUI();
+   } // end function createPlayLabels()
+
+
+   // Function to create the labels in the deck area
+   static void createDeckLabel(Model.CardGameFramework BuildGame, View.CardTable myCardTable)
+   {
+      myCardTable.pnlDeckArea.removeAll();
+      Icon deckCard;
+      String deckText = "<html>";
+      deckText += BuildGame.getNumCardsRemainingInDeck();
+      deckText += " Cards " + "<br>" + " Remaining ";
+      deckText += "<br>" + " In The Deck ";
+      GridLayout mainGridLayout = new GridLayout(2, 1, 0, 0);
+      myCardTable.pnlDeckArea.setLayout(mainGridLayout);
+      if (BuildGame.getNumCardsRemainingInDeck() > 0)
+      {
+         //deckCard = Model.GUICard.getIcon(BuildGame.deck.inspectCard(BuildGame.deck.getTopCard()));
+         deckCard = Model.GUICard.getBackCardIcon();
+      }
+      else
+      {
+         deckCard = Model.GUICard.getBlankCardIcon();
+      }
+      deckLabel = new JLabel(deckCard, JLabel.CENTER);
+      deckTextLabel = new JLabel(deckText, JLabel.CENTER);
+      myCardTable.pnlDeckArea.add(deckLabel);
+      myCardTable.pnlDeckArea.add(deckTextLabel);
+      myCardTable.pnlDeckArea.updateUI();
+   } // end function createDeckLabels()
+
+
+   // Create and display the labels for the computer player hand
+   static void createCompLabels(Model.CardGameFramework BuildGame, View.CardTable myCardTable)
+   {
+      Icon compCard;
+      int numCards = BuildGame.getHand(1).getNumCards();
+      myCardTable.pnlComputerHand.removeAll();
+      for (int card = 0; card < numCards; card++)
+      {
+         //compCard = Model.GUICard.getIcon(BuildGame.getHand(1).inspectCard(card));
+         compCard = Model.GUICard.getBackCardIcon();
+         computerLabels[card] = new JLabel(compCard);
+      }
+      for (int i = 0; i < numCards; i++)
+      {
+         myCardTable.pnlComputerHand.add(computerLabels[i]);
+      }
+      myCardTable.pnlComputerHand.updateUI();
+   } // end function createCompLabels()
+
+
+   // Create and display the labels for the human player hand
+   static void createHumanLabels(Model.CardGameFramework BuildGame, View.CardTable myCardTable)
+   {
+      Icon humanCard;
+      int numCards = BuildGame.getHand(0).getNumCards();
+      myCardTable.pnlHumanHand.removeAll();
+      for (int card = 0; card < numCards; card++)
+      {
+         humanCard = Model.GUICard.getIcon(BuildGame.getHand(0).inspectCard(card));
+         humanLabels[card] = new JLabel(humanCard);
+
+      }
+      for (int i = 0; i < numCards; i++)
+      {
+         myCardTable.pnlHumanHand.add(humanLabels[i]);
+      }
+      myCardTable.pnlHumanHand.updateUI();
+   } // end function createHumanLabels()
+
+
+   protected static boolean firstMove = false;
+
+
+   // Create and display the labels for the human player hand
+   static void createHumanButtons(Model.CardGameFramework BuildGame, View.CardTable myCardTable, Model.Hand[] stacks)
+   {
+      Icon humanCard;
+      int numCards = BuildGame.getHand(0).getNumCards();
+      myCardTable.pnlHumanHand.removeAll();
+      for (int card = 0; card < numCards; card++)
+      {
+         humanCard = Model.GUICard.getIcon(BuildGame.getHand(0).inspectCard(card));
+         humanButtons[card] = new JButton(humanCard);
+         humanButtons[card].addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+               for (int i = 0; i < numCards; i++)
+               {
+                  if (e.getSource() == humanButtons[i])
+                  {
+                     if ( firstMove == false ) {
+
+                        firstMove = true;
+                     }
+
+                     cardPlayed = BuildGame.getHand(0).inspectCard(i);
+                     createHumanLabels(BuildGame, myCardTable);
+                     createStackButtons(BuildGame, myCardTable, stacks, i);
+                     createPlayLabels(BuildGame, myCardTable);
+                     cannotPlay.setEnabled(false);
+                     myCardTable.pnlHumanHand.remove(humanLabels[i]);
+                  } // end if
+               } // end for
+            } // end actionPerformed
+         }); // end actionListener
+      } // end for
+      for (int i = 0; i < numCards; i++) {
+         myCardTable.pnlHumanHand.add(humanButtons[i]);
+      }
+      myCardTable.pnlHumanHand.updateUI();
+   } // end function createHumanButtons()
+
+
+   /*static void disableHumanButtons()
+   {
+
+   }
+    */
+
+
+   // Create and display the labels stacks in the play area
+   static void createStackLabels(Model.CardGameFramework BuildGame, View.CardTable myCardTable, Model.Hand[] stacks)
+   {
+      Icon stackCard;
+      myCardTable.pnlPlayArea.removeAll();
+      GridLayout mainGridLayout = new GridLayout(2, 3, 0, 0);
+      myCardTable.pnlPlayArea.setLayout(mainGridLayout);
+      stackText[0] = new JLabel("Stack1", JLabel.CENTER);
+      stackText[1] = new JLabel("Stack2", JLabel.CENTER);
+      stackText[2] = new JLabel("Stack3", JLabel.CENTER);
+      for (int hand = 0; hand < NUM_STACKS; hand++)
+      {
+         int topCard = stacks[hand].getNumCards() - 1;
+         stackCard = Model.GUICard.getIcon(stacks[hand].inspectCard(topCard));
+         stackLabels[hand] = new JLabel(stackCard, JLabel.CENTER);
+      }
+      for (int i = 0; i < NUM_STACKS; i++)
+      {
+         myCardTable.pnlPlayArea.add(stackLabels[i]);
+      }
+      for (int i = 0; i < NUM_STACKS; i++)
+      {
+         myCardTable.pnlPlayArea.add(stackText[i]);
+      }
+      myCardTable.pnlPlayArea.updateUI();
+   } // end function createStackLabels
+
+   // Create buttons to play card on stack
+   static void createStackButtons(Model.CardGameFramework BuildGame, View.CardTable myCardTable, Model.Hand[] stacks, int humanCardIndex)
+   {
+      Icon stackCard;
+      myCardTable.pnlPlayArea.removeAll();
+      GridLayout mainGridLayout = new GridLayout(2, 3, 0, 0);
+      myCardTable.pnlPlayArea.setLayout(mainGridLayout);
+      stackText[0] = new JLabel("Stack1", JLabel.CENTER);
+      stackText[1] = new JLabel("Stack2", JLabel.CENTER);
+      stackText[2] = new JLabel("Stack3", JLabel.CENTER);
+      for (int hand = 0; hand < NUM_STACKS; hand++)
+      {
+         int topCard = stacks[hand].getNumCards() - 1;
+         stackCard = Model.GUICard.getIcon(stacks[hand].inspectCard(topCard));
+         stackButtons[hand] = new JButton(stackCard);
+         stackButtons[hand].addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+               for (int i = 0; i < NUM_STACKS; i++)
+               {
+                  if (e.getSource() == stackButtons[i])
+                  {
+                     int stackCardValue = Model.Card.cardValue(stacks[i].inspectCard(topCard));
+                     int humanCardValue = Model.Card.cardValue(BuildGame.getHand(0).inspectCard(humanCardIndex));
+                     if (Math.abs(stackCardValue - humanCardValue) == 1)
+                     {
+                        stacks[i].takeCard(BuildGame.getHand(0).playCard(humanCardIndex));
+                        BuildGame.takeCard(0);
+                        BuildGame.getHand(0).sort();
+                        consecutiveCannotPlays = 0;
+                        cardPlayed = null;
+                        cannotPlay.setEnabled(true);
+                        createHumanButtons(BuildGame, myCardTable, stacks );
+                        createStackLabels(BuildGame, myCardTable, stacks);
+                        createPlayLabels(BuildGame, myCardTable );
+                        createDeckLabel(BuildGame, myCardTable);
+                     }
+                     else
+                     {
+                        JOptionPane.showMessageDialog(null, "Illegal Move! Try Again.");
+                        cardPlayed = null;
+                        cannotPlay.setEnabled(true);
+                        createHumanButtons(BuildGame, myCardTable, stacks );
+                        createStackLabels(BuildGame, myCardTable, stacks);
+                        createPlayLabels(BuildGame, myCardTable );
+                     } // end else
+                  } // end if
+               } // end for
+            } // end actionPerformed()
+         }); // end actionListener()
+      } // end for
+      for (int i = 0; i < NUM_STACKS; i++) {
+         myCardTable.pnlPlayArea.add(stackButtons[i]);
+      }
+      for (int i = 0; i < NUM_STACKS; i++) {
+         myCardTable.pnlPlayArea.add(stackText[i]);
+      }
+      myCardTable.pnlPlayArea.updateUI();
+   } // end function createStackButtons
+
+
+} // end class Controller
